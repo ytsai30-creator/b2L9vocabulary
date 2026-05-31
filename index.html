@@ -174,25 +174,43 @@ const vocabulary = [
   },
   {
     word: "import",
+    pron: "[ɪm`port]",
     senses: [
       { pos: "vt.", def_en: "to buy or bring something into a country from another country", def_ch: "進口，輸入",
-        example_en: "With its high demand for oil, India imports more than one million barrels of oil from Russia a day." },
-      { pos: "n. [C]", def_en: "a product that is brought into a country from another country", def_ch: "進口商品",
-        example_en: "The government restricts certain imports from foreign countries to protect local businesses." }
+        example_en: "With its high demand for oil, India imports more than one million barrels of oil from Russia a day." }
     ],
-    syn: "bring in, foreign goods",
+    syn: "bring in, introduce",
     ant: "export, send out"
   },
   {
+    word: "import",
+    pron: "[`ɪmport]",
+    senses: [
+      { pos: "n. [C]", def_en: "a product that is brought into a country from another country", def_ch: "進口商品",
+        example_en: "The government restricts certain imports from foreign countries to protect local businesses." }
+    ],
+    syn: "foreign goods, shipment",
+    ant: "export, domestic product"
+  },
+  {
     word: "address",
+    pron: "[ə`drɛs]",
     senses: [
       { pos: "vt.", def_en: "to deal with a problem or try to find a solution to it", def_ch: "處理，設法解決",
-        example_en: "In 2022, a UN conference was held in Egypt to address concerns about global warming." },
-      { pos: "n. [C]", def_en: "the details of where someone lives or works", def_ch: "地址",
-        example_en: "Phone numbers and home addresses are personal information that shouldn't be given out to strangers." }
+        example_en: "In 2022, a UN conference was held in Egypt to address concerns about global warming." }
     ],
     syn: "handle, tackle",
     ant: "ignore, avoid"
+  },
+  {
+    word: "address",
+    pron: "[`ædrɛs]",
+    senses: [
+      { pos: "n. [C]", def_en: "the details of where someone lives or works", def_ch: "地址",
+        example_en: "Phone numbers and home addresses are personal information that shouldn't be given out to strangers." }
+    ],
+    syn: "location, details",
+    ant: "anonymity, unknown"
   },
   {
     word: "agricultural",
@@ -479,7 +497,9 @@ function globalSpeak(text, rate) {
 // CARD BUILDER
 // ============================================================
 function buildCard(d, idx) {
-    // FRONT: word + sense rows (pos + English def only — no example)
+    const pronHtml = d.pron ? `<div style="color:#888;font-style:italic;font-size:1rem;margin-bottom:8px;">${d.pron}</div>` : '';
+
+    // FRONT: word + pron (if any) + sense rows (pos + English def only — no example)
     const frontSenses = d.senses.map(s=>`
         <div class="sense-row">
             <div class="sense-pos">${s.pos}</div>
@@ -498,12 +518,14 @@ function buildCard(d, idx) {
         <div class="flip-card-front">
             <div class="counter">${idx+1} / ${vocabulary.length}</div>
             <div class="word">${d.word}</div>
+            ${pronHtml}
             ${frontSenses}
             <div class="hint-flip">點擊翻面看中文 ↩</div>
         </div>
         <div class="flip-card-back">
             <div class="counter">${idx+1} / ${vocabulary.length}</div>
             <div class="word" style="font-size:2.3rem;">${d.word}</div>
+            ${pronHtml}
             ${backSenses}
             <div class="extra-info">
                 <div>📖 <strong>Synonyms 同義字</strong>: ${d.syn}</div>
@@ -648,7 +670,7 @@ function loadQuiz() {
 function playQuizAudio(){if(quizSession.curTarget)globalSpeak(quizSession.curTarget.word);}
 
 // ============================================================
-// MATCH — word vs first synonym
+// MATCH — word vs first synonym; no same base-word in one round
 // ============================================================
 function startMatchGame() {
     document.getElementById('match-start-btn').style.display='none';
@@ -656,19 +678,45 @@ function startMatchGame() {
     let mTime=0,matchesFound=0,firstCard=null,matchActive=true;
     clearInterval(window.matchInt);
     window.matchInt=setInterval(()=>{mTime++;document.getElementById('match-timer').innerText=mTime;},1000);
-    let pool=vocabulary.filter(v=>!matchUsed.includes(v.word));
-    if(pool.length<6){matchUsed=[];pool=[...vocabulary];}
-    const sub=pool.sort(()=>0.5-Math.random()).slice(0,6);
-    sub.forEach(s=>matchUsed.push(s.word));
+
+    // Build pool: filter already-used cards, then pick 6 with no duplicate base word
+    let fullPool=vocabulary.filter(v=>!matchUsed.includes(v.word+(v.pron||'')));
+    if(fullPool.length<6){matchUsed=[];fullPool=[...vocabulary];}
+
+    // Shuffle then pick ensuring no two cards share the same .word
+    fullPool.sort(()=>0.5-Math.random());
+    const sub=[];
+    const usedWords=new Set();
+    for(const v of fullPool){
+        if(!usedWords.has(v.word)){
+            sub.push(v);
+            usedWords.add(v.word);
+        }
+        if(sub.length===6) break;
+    }
+    // If still < 6 after dedup (very small vocab), just fill up
+    if(sub.length<6){
+        for(const v of fullPool){
+            if(sub.length===6) break;
+            if(!sub.includes(v)) sub.push(v);
+        }
+    }
+    sub.forEach(s=>matchUsed.push(s.word+(s.pron||'')));
+
+    // Build card pairs: word label uses word + pos tag to distinguish homophones
     let cards=[];
     sub.forEach(v=>{
-        cards.push({id:v.word,text:v.word});
-        cards.push({id:v.word,text:v.syn.split(',')[0].trim()});
+        const label = v.pron ? `${v.word}\n${v.pron}` : v.word;
+        cards.push({id:v.word+(v.pron||''),text:label});
+        cards.push({id:v.word+(v.pron||''),text:v.syn.split(',')[0].trim()});
     });
     cards.sort(()=>0.5-Math.random());
+
     const grid=document.getElementById('match-grid'); grid.innerHTML='';
     cards.forEach(item=>{
-        const div=document.createElement('div'); div.className='match-item'; div.innerText=item.text;
+        const div=document.createElement('div'); div.className='match-item';
+        div.style.whiteSpace='pre-line';
+        div.innerText=item.text;
         div.onclick=()=>{
             if(!matchActive||div.classList.contains('correct')||div===firstCard?.div) return;
             div.classList.add('selected');
